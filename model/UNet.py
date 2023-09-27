@@ -1,9 +1,29 @@
 import torch.nn as nn
+import torch
 import math
 
 class Block(nn.Module):
     def __init__(self, in_c, out_c, up = False):
-        pass
+        super().init__()
+        self.bnorm = nn.BatchNorm2d(out_c)
+        self.relu = nn.ReLU()
+        # TODO add Time Embeddings
+        if up:
+            self.conv1 = nn.Conv2d(2*in_c, out_c, 3, padding=1)
+            self.transform = nn.ConvTranspose2d(out_c, out_c, 4, 2, 1)
+        else:
+            self.conv1 = nn.Conv2d(in_c, out_c, 3, padding=1)
+            self.transform = nn.ConvTranspose2d(out_c, out_c, 4, 2, 1)
+
+        self.conv2 = nn.Conv2d(out_c, out_c, 3, padding=1)
+
+    def forward(self, x, t):
+        h = self.bnorm(self.relu(self.conv1(x)))
+        # TODO add Time Embeddings
+        h = self.bnorm(self.relu(self.conv2d(h)))
+        return self.transform(h)
+
+
 class Unet(nn.Module):
     def __init__(self, image_size = 480, te_dim = 32):
         super(Unet, self).__init__()
@@ -26,3 +46,19 @@ class Unet(nn.Module):
 
         # Add output layer
         self.layers.append(nn.Conv2d(up_channels[-1], 1))
+
+    def forward(self, x, t):
+        # TODO add timestamp
+        t = 0
+        x = self.layers[0](x) # Conv0
+        residuals = []
+        for i in range(1, len(self.down_channels)):
+            x = self.layers[i](x)
+            residuals.append(x)
+
+        for i in range(len(self.down_channels), len(self.down_channels) + len(self.up_channels)):
+            residual = residuals.pop()
+            x = torch.cat((x, residual), dim=1)
+            x = self.layers[i](x)
+
+        return self.layers[-1](x)
